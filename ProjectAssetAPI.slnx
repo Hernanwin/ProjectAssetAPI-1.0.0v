@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ProjectAssetAgent/ProjectAssetAgent.csproj" Id="baecdec1-2b84-4d35-962f-6180643385d6" />
+  <Project Path="ProjectAssetAPI/ProjectAssetAPI.csproj" />
+</Solution>

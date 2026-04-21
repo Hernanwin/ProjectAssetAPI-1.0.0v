@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ProjectAssetAgent": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
