@@ -5,7 +5,7 @@
 namespace ProjectAssetAPI.Migrations
 {
     /// <inheritdoc />
-    public partial class VisualLabs : Migration
+    public partial class AddTableVisualLabs : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

@@ -1,112 +1,179 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using ProjectAssetAPI.Context;
+using ProjectAssetAPI.DTOs;
 using ProjectAssetAPI.Models;
+using ProjectAssetAPI.Options;
 
 namespace ProjectAssetAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class VisualLabsController : ControllerBase
     {
         private readonly VisualDBContext _context;
+        private readonly IOptionsMonitor<SecurityOptions> _securityOptions;
 
-        public VisualLabsController(VisualDBContext context)
+        public VisualLabsController(
+            VisualDBContext context,
+            IOptionsMonitor<SecurityOptions> securityOptions)
         {
             _context = context;
+            _securityOptions = securityOptions;
         }
+
+        private TimeSpan HeartbeatTimeout =>
+            TimeSpan.FromSeconds(Math.Max(1, _securityOptions.CurrentValue.HeartbeatTimeoutSeconds));
 
         // GET: api/VisualLabs
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<VisualLab>>> GetVisualLabs()
+        public async Task<ActionResult<IEnumerable<VisualLabResponse>>> GetVisualLabs(CancellationToken cancellationToken)
         {
-            return await _context.VisualLabs.ToListAsync();
+            var timeout = HeartbeatTimeout;
+            var labs = await _context.VisualLabs
+                .AsNoTracking()
+                .OrderByDescending(l => l.LastSeenUtc)
+                .Select(l => new
+                {
+                    Lab = l,
+                    EventCount = l.SecurityEvents.Count
+                })
+                .ToListAsync(cancellationToken);
+
+            var response = labs.Select(x => VisualLabResponse.FromEntity(x.Lab, timeout, x.EventCount));
+            return Ok(response);
         }
 
         // GET: api/VisualLabs/5
-        [HttpGet("{id}")]
-        public async Task<ActionResult<VisualLab>> GetVisualLab(int id)
+        [HttpGet("{id:int}")]
+        public async Task<ActionResult<VisualLabResponse>> GetVisualLab(int id, CancellationToken cancellationToken)
         {
-            var visualLab = await _context.VisualLabs.FindAsync(id);
+            var item = await _context.VisualLabs
+                .AsNoTracking()
+                .Where(l => l.Id == id)
+                .Select(l => new
+                {
+                    Lab = l,
+                    EventCount = l.SecurityEvents.Count
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
-            if (visualLab == null)
+            if (item is null)
             {
                 return NotFound();
             }
 
-            return visualLab;
+            return Ok(VisualLabResponse.FromEntity(item.Lab, HeartbeatTimeout, item.EventCount));
+        }
+
+        // POST: api/VisualLabs/register (Upsert por Hostname + Heartbeat)
+        [HttpPost("register")]
+        public async Task<ActionResult<VisualLabResponse>> RegisterAsset(
+            [FromBody] RegisterAssetRequest request,
+            CancellationToken cancellationToken)
+        {
+            var normalizedHostname = request.Hostname.Trim();
+            var normalizedIp = request.IPAddress.Trim();
+            var normalizedOs = request.OperatingSystem.Trim();
+            var now = DateTime.UtcNow;
+
+            var existing = await _context.VisualLabs
+                .FirstOrDefaultAsync(
+                    l => l.Hostname.ToLower() == normalizedHostname.ToLower(),
+                    cancellationToken);
+
+            if (existing is not null)
+            {
+                existing.Hostname = normalizedHostname;
+                existing.IPAddress = normalizedIp;
+                existing.OperatingSystem = normalizedOs;
+                existing.Status = string.IsNullOrWhiteSpace(request.Status) ? "Online" : request.Status;
+                existing.LastSeenUtc = now;
+
+                await _context.SaveChangesAsync(cancellationToken);
+
+                var eventCount = await _context.VisualSecurities
+                    .CountAsync(s => s.AssetId == existing.Id, cancellationToken);
+
+                return Ok(VisualLabResponse.FromEntity(existing, HeartbeatTimeout, eventCount));
+            }
+
+            var created = new VisualLab
+            {
+                Hostname = normalizedHostname,
+                IPAddress = normalizedIp,
+                OperatingSystem = normalizedOs,
+                Status = string.IsNullOrWhiteSpace(request.Status) ? "Online" : request.Status,
+                CreatedAtUtc = now,
+                LastSeenUtc = now
+            };
+
+            _context.VisualLabs.Add(created);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            var response = VisualLabResponse.FromEntity(created, HeartbeatTimeout, 0);
+            return CreatedAtAction(nameof(GetVisualLab), new { id = created.Id }, response);
         }
 
         // PUT: api/VisualLabs/5
-        
-        [HttpPut("{id}")]
-        public async Task<IActionResult> PutVisualLab(int id, VisualLab visualLab)
+        [HttpPut("{id:int}")]
+        public async Task<IActionResult> PutVisualLab(
+            int id,
+            [FromBody] UpdateAssetRequest request,
+            CancellationToken cancellationToken)
         {
-            if (id != visualLab.Id)
+            var existing = await _context.VisualLabs.FindAsync([id], cancellationToken);
+            if (existing is null)
             {
-                return BadRequest();
+                return NotFound();
             }
 
-            _context.Entry(visualLab).State = EntityState.Modified;
+            var normalizedHostname = request.Hostname.Trim();
+            var duplicateExists = await _context.VisualLabs
+                .AnyAsync(
+                    l => l.Id != id && l.Hostname.ToLower() == normalizedHostname.ToLower(),
+                    cancellationToken);
 
-            try
+            if (duplicateExists)
             {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!VisualLabExists(id))
+                return Conflict(new ProblemDetails
                 {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
+                    Title = "Hostname duplicado",
+                    Detail = $"Ya existe otro dispositivo registrado con el hostname '{normalizedHostname}'.",
+                    Status = StatusCodes.Status409Conflict
+                });
             }
 
+            existing.Hostname = normalizedHostname;
+            existing.IPAddress = request.IPAddress.Trim();
+            existing.OperatingSystem = request.OperatingSystem.Trim();
+            existing.Status = request.Status;
+            if (string.Equals(request.Status, "Online", StringComparison.OrdinalIgnoreCase))
+            {
+                existing.LastSeenUtc = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
             return NoContent();
         }
 
-        // POST: api/VisualLabs/register
-       
-        [HttpPost("register")]
-        public async Task<IActionResult> RegisterAsset([FromBody] VisualLab asset)
-        {
-            asset.Status = "Online";
-
-            _context.VisualLabs.Add(asset);
-
-            await _context.SaveChangesAsync();
-
-            return Ok(asset);
-        }
-
-
         // DELETE: api/VisualLabs/5
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteVisualLab(int id)
+        [HttpDelete("{id:int}")]
+        public async Task<IActionResult> DeleteVisualLab(int id, CancellationToken cancellationToken)
         {
-            var visualLab = await _context.VisualLabs.FindAsync(id);
-            if (visualLab == null)
+            var visualLab = await _context.VisualLabs.FindAsync([id], cancellationToken);
+            if (visualLab is null)
             {
                 return NotFound();
             }
 
             _context.VisualLabs.Remove(visualLab);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             return NoContent();
-        }
-
-        private bool VisualLabExists(int id)
-        {
-            return _context.VisualLabs.Any(e => e.Id == id);
         }
     }
 }

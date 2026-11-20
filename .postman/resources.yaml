@@ -1,0 +1,7 @@
+# Use this workspace to collaborate
+workspace:
+  id: 51f51beb-00cb-43f7-84fa-10df72f6f1f6
+
+localResources:
+  specs:
+    - ../ProjectAssetAPI/obj/Debug/net10.0/EndpointInfo/ProjectAssetAPI.json

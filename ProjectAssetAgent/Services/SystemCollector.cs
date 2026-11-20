@@ -1,7 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Net;
+﻿using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 
 namespace ProjectAssetAgent.Services
@@ -15,14 +14,43 @@ namespace ProjectAssetAgent.Services
 
         public static string GetIPAddress()
         {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-
-            foreach (var ip in host.AddressList)
+            try
             {
-                if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                var activeInterfaceIp = NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(ni =>
+                        ni.OperationalStatus == OperationalStatus.Up &&
+                        ni.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                        ni.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
+                    .SelectMany(ni => ni.GetIPProperties().UnicastAddresses)
+                    .Select(ua => ua.Address)
+                    .FirstOrDefault(ip =>
+                        ip.AddressFamily == AddressFamily.InterNetwork &&
+                        !IPAddress.IsLoopback(ip));
+
+                if (activeInterfaceIp is not null)
                 {
-                    return ip.ToString();
+                    return activeInterfaceIp.ToString();
                 }
+            }
+            catch
+            {
+                // Fallback a resolución DNS si no se pueden consultar interfaces
+            }
+
+            try
+            {
+                var host = Dns.GetHostEntry(Dns.GetHostName());
+                foreach (var ip in host.AddressList)
+                {
+                    if (ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))
+                    {
+                        return ip.ToString();
+                    }
+                }
+            }
+            catch
+            {
+                // Ignorado: devolvemos Unknown
             }
 
             return "Unknown";
@@ -30,7 +58,7 @@ namespace ProjectAssetAgent.Services
 
         public static string GetOperatingSystem()
         {
-            return RuntimeInformation.OSDescription;
+            return RuntimeInformation.OSDescription.Trim();
         }
     }
 }

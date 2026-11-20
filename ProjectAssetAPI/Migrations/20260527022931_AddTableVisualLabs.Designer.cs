@@ -11,15 +11,15 @@ using ProjectAssetAPI.Context;
 namespace ProjectAssetAPI.Migrations
 {
     [DbContext(typeof(VisualDBContext))]
-    [Migration("20260313193614_VisualLabs")]
-    partial class VisualLabs
+    [Migration("20260527022931_AddTableVisualLabs")]
+    partial class AddTableVisualLabs
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.5")
+                .HasAnnotation("ProductVersion", "10.0.8")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);

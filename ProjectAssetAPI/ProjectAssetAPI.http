@@ -1,6 +1,60 @@
-@ProjectAssetAPI_HostAddress = http://localhost:5199
+@ProjectAssetAPI_HostAddress = http://localhost:5000
+@ApiKey = dev-local-api-key-change-in-prod
 
-GET {{ProjectAssetAPI_HostAddress}}/weatherforecast/
+### Health check (sin autenticación)
+GET {{ProjectAssetAPI_HostAddress}}/health
 Accept: application/json
 
-###
+### Listar dispositivos registrados
+GET {{ProjectAssetAPI_HostAddress}}/api/VisualLabs
+X-Api-Key: {{ApiKey}}
+Accept: application/json
+
+### Registrar o actualizar dispositivo (Upsert + Heartbeat)
+POST {{ProjectAssetAPI_HostAddress}}/api/VisualLabs/register
+X-Api-Key: {{ApiKey}}
+Content-Type: application/json
+
+{
+  "hostname": "LAB-PC-01",
+  "ipAddress": "192.168.0.50",
+  "operatingSystem": "Microsoft Windows 11 Pro"
+}
+
+### Obtener dispositivo por ID
+GET {{ProjectAssetAPI_HostAddress}}/api/VisualLabs/1
+X-Api-Key: {{ApiKey}}
+Accept: application/json
+
+### Actualizar dispositivo
+PUT {{ProjectAssetAPI_HostAddress}}/api/VisualLabs/1
+X-Api-Key: {{ApiKey}}
+Content-Type: application/json
+
+{
+  "hostname": "LAB-PC-01",
+  "ipAddress": "192.168.0.51",
+  "operatingSystem": "Microsoft Windows 11 Pro",
+  "status": "Maintenance"
+}
+
+### Listar eventos de seguridad
+GET {{ProjectAssetAPI_HostAddress}}/api/VisualSecurity
+X-Api-Key: {{ApiKey}}
+Accept: application/json
+
+### Registrar evento de seguridad para el dispositivo 1
+POST {{ProjectAssetAPI_HostAddress}}/api/VisualSecurity
+X-Api-Key: {{ApiKey}}
+Content-Type: application/json
+
+{
+  "assetId": 1,
+  "eventType": "FailedLogin",
+  "severity": "High",
+  "description": "5 intentos fallidos de inicio de sesión consecutivos."
+}
+
+### Eliminar dispositivo (y sus eventos en cascada)
+DELETE {{ProjectAssetAPI_HostAddress}}/api/VisualLabs/1
+X-Api-Key: {{ApiKey}}

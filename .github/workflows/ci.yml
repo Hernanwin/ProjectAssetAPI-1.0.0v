@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  dotnet:
+    name: Build & Test (.NET 10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore ProjectAssetAPI.slnx
+
+      - name: Build solution
+        run: dotnet build ProjectAssetAPI.slnx --no-restore --configuration Release
+
+      - name: Run tests
+        run: dotnet test ProjectAssetAPI.slnx --no-build --configuration Release --verbosity normal
+
+  dashboard:
+    name: Lint, Typecheck & Build (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: visual-dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: visual-dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
