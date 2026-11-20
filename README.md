@@ -1,6 +1,5 @@
 # ProjectAssetAPI
 
-[![CI](https://github.com/Hernanwin/ProjectAssetAPI-1.0.0v/actions/workflows/ci.yml/badge.svg)](https://github.com/Hernanwin/ProjectAssetAPI-1.0.0v/actions/workflows/ci.yml)
 ![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)
 ![EF Core](https://img.shields.io/badge/EF%20Core-10.0-512BD4)
 ![Next.js 16](https://img.shields.io/badge/Next.js-16.4-000000?logo=nextdotjs&logoColor=white)
